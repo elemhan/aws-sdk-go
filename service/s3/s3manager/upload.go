@@ -622,6 +622,26 @@ func (u *multiuploader) upload(firstBuf io.ReadSeeker, cleanup func()) (*UploadO
 	// Close the channel, wait for workers, and complete upload
 	close(ch)
 	u.wg.Wait()
+
+	listPartParams := &s3.ListPartsInput{
+		Bucket:   u.in.Bucket,
+		Key:      u.in.Key,
+		UploadId: &u.uploadID,
+	}
+	partsOutput, err := u.cfg.S3.ListPartsWithContext(u.ctx, listPartParams, u.cfg.RequestOptions...)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	parts := make([]*s3.CompletedPart, 0)
+	for _, v := range partsOutput.Parts {
+		parts = append(parts, &s3.CompletedPart{
+			PartNumber: v.PartNumber,
+			ETag:       v.ETag,
+		})
+	}
+	u.parts = parts
+
 	complete := u.complete()
 
 	if err := u.geterr(); err != nil {
